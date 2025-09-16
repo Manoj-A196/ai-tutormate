@@ -1,12 +1,17 @@
 import streamlit as st
-from g4f.client import Client
-from g4f.Provider import Grok  # Force Grok provider
+from groq import Groq
+from dotenv import load_dotenv
+import os
 
-# Initialize client
-client = Client()
+# Load API key from .env
+load_dotenv()
+api_key = os.getenv("GROQ_API_KEY") or "your_groq_api_key_here"
 
-st.set_page_config(page_title="AI Tutor (Education Only)", page_icon="📘")
-st.title("📘 AI Tutor Mate - Study Helper")
+# Initialize Groq client
+client = Groq(api_key=api_key)
+
+st.set_page_config(page_title="AI TutorMate", page_icon="📘")
+st.title("📘 AI TutorMate - Study Helper")
 
 # Store conversation
 if "messages" not in st.session_state:
@@ -14,41 +19,39 @@ if "messages" not in st.session_state:
         {
             "role": "system",
             "content": (
-                "You are AI Tutor Mate. "
-                "You only provide answers for educational purposes: "
-                "subjects like mathematics, science, coding, engineering, history, and literature. "
-                "If a user asks something unrelated to study or learning, politely refuse and remind them "
-                "that you are only for education."
+                "You are AI TutorMate, a helpful teacher. "
+                "You ONLY provide responses for educational purposes, such as math, science, coding, "
+                "engineering, history, or literature. "
+                "If a user asks something unrelated to study or education, you must politely refuse "
+                "and remind them that you only help with learning."
             )
         }
     ]
 
 # User input
-user_input = st.text_area("✍️ Ask your study question:")
+user_input = st.text_input("✍️ Ask your study question:")
 
-if st.button("Generate Response"):
+if st.button("Send"):
     if user_input:
-        with st.spinner("Thinking like a tutor..."):
-            st.session_state["messages"].append({"role": "user", "content": user_input})
+        st.session_state["messages"].append({"role": "user", "content": user_input})
 
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=st.session_state["messages"],
-                provider=Grok
-            )
+        # Call Groq API
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",  # free Groq model
+            messages=st.session_state["messages"],
+            temperature=0.7
+        )
 
-            reply = response.choices[0].message.content
-            st.session_state["messages"].append({"role": "assistant", "content": reply})
+        answer = response.choices[0].message.content
+        st.session_state["messages"].append({"role": "assistant", "content": answer})
 
-            st.success("✅ Tutor answered!")
-            st.write(reply)
-    else:
-        st.warning("Please enter a study-related question!")
+        # Show reply
+        st.write(f"**🤖 TutorMate:** {answer}")
 
-# Show history
+# Show chat history
 st.subheader("📝 Conversation History")
 for msg in st.session_state["messages"]:
     if msg["role"] == "user":
         st.markdown(f"**👤 You:** {msg['content']}")
     elif msg["role"] == "assistant":
-        st.markdown(f"**🤖 Tutor:** {msg['content']}")
+        st.markdown(f"**🤖 TutorMate:** {msg['content']}")
