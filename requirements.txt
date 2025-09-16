@@ -1,3 +1,4 @@
 streamlit
 groq
 python-dotenv
+g4f
