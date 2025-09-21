@@ -35,10 +35,23 @@ if "messages" not in st.session_state:
         }
     ]
 
-# Use chat input (auto clears after sending)
+# --- Show chat history first ---
+for msg in st.session_state["messages"]:
+    if msg["role"] == "user":
+        with st.chat_message("user"):
+            st.write(msg["content"])
+    elif msg["role"] == "assistant":
+        with st.chat_message("assistant"):
+            st.write(msg["content"])
+
+# --- Handle new input ---
 user_input = st.chat_input("✍️ Ask your study question:")
 
 if user_input:
+    # Show user bubble immediately
+    with st.chat_message("user"):
+        st.write(user_input)
+
     st.session_state["messages"].append({"role": "user", "content": user_input})
 
     try:
@@ -50,18 +63,12 @@ if user_input:
         )
 
         answer = response.choices[0].message.content
-        st.session_state["messages"].append({"role": "assistant", "content": answer})
-
     except Exception as e:
-        st.session_state["messages"].append(
-            {"role": "assistant", "content": f"⚠️ API Error: {e}"}
-        )
+        answer = f"⚠️ API Error: {e}"
 
-# Show chat history with bubbles
-for msg in st.session_state["messages"]:
-    if msg["role"] == "user":
-        with st.chat_message("user"):
-            st.write(msg["content"])
-    elif msg["role"] == "assistant":
-        with st.chat_message("assistant"):
-            st.write(msg["content"])
+    # Show assistant bubble immediately
+    with st.chat_message("assistant"):
+        st.write(answer)
+
+    # Save to history
+    st.session_state["messages"].append({"role": "assistant", "content": answer})
