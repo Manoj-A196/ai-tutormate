@@ -5,3 +5,6 @@ g4f
 playwright
 undetected-chromedriver
 reportlab
+streamlit-authenticator
+pandas
+pyyaml
