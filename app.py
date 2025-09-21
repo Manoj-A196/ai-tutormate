@@ -74,20 +74,35 @@ init_db()
 st.set_page_config(page_title="AI TutorMate", page_icon="📘", layout="wide")
 
 # -----------------------------
-# Authentication
+# Authentication Setup
 # -----------------------------
 names = ["Alice", "Bob"]
 usernames = ["alice", "bob"]
 passwords = ["123", "456"]  # demo passwords
 hashed_pw = stauth.Hasher(passwords).generate()
 
+credentials = {
+    "usernames": {
+        usernames[i]: {
+            "name": names[i],
+            "password": hashed_pw[i]
+        }
+        for i in range(len(usernames))
+    }
+}
+
 authenticator = stauth.Authenticate(
-    dict(zip(usernames, names)), usernames, hashed_pw,
-    "tutormate_cookie", "abcdef", cookie_expiry_days=30
+    credentials,
+    "tutormate_cookie",
+    "abcdef",
+    cookie_expiry_days=30
 )
 
 name, auth_status, username = authenticator.login("Login", "sidebar")
 
+# -----------------------------
+# Login Handling
+# -----------------------------
 if auth_status is False:
     st.error("❌ Invalid username or password")
 elif auth_status is None:
