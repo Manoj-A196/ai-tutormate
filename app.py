@@ -52,16 +52,16 @@ if user_input:
         answer = response.choices[0].message.content
         st.session_state["messages"].append({"role": "assistant", "content": answer})
 
-        # Show reply
-        st.write(f"**🤖 TutorMate:** {answer}")
-
     except Exception as e:
-        st.error(f"⚠️ API Error: {e}")
+        st.session_state["messages"].append(
+            {"role": "assistant", "content": f"⚠️ API Error: {e}"}
+        )
 
-# Show chat history
-st.subheader("📝 Conversation History")
+# Show chat history with bubbles
 for msg in st.session_state["messages"]:
     if msg["role"] == "user":
-        st.markdown(f"**👤 You:** {msg['content']}")
+        with st.chat_message("user"):
+            st.write(msg["content"])
     elif msg["role"] == "assistant":
-        st.markdown(f"**🤖 TutorMate:** {msg['content']}")
+        with st.chat_message("assistant"):
+            st.write(msg["content"])
