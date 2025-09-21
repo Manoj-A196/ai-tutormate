@@ -28,25 +28,24 @@ if "messages" not in st.session_state:
         }
     ]
 
-# User input
-user_input = st.text_input("✍️ Ask your study question:")
+# Use chat input (auto-clears after sending)
+user_input = st.chat_input("✍️ Ask your study question:")
 
-if st.button("Send"):
-    if user_input:
-        st.session_state["messages"].append({"role": "user", "content": user_input})
+if user_input:
+    st.session_state["messages"].append({"role": "user", "content": user_input})
 
-        # Call Groq API
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",  # free Groq model
-            messages=st.session_state["messages"],
-            temperature=0.7
-        )
+    # Call Groq API
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",  # free Groq model
+        messages=st.session_state["messages"],
+        temperature=0.7
+    )
 
-        answer = response.choices[0].message.content
-        st.session_state["messages"].append({"role": "assistant", "content": answer})
+    answer = response.choices[0].message.content
+    st.session_state["messages"].append({"role": "assistant", "content": answer})
 
-        # Show reply
-        st.write(f"**🤖 TutorMate:** {answer}")
+    # Show reply
+    st.write(f"**🤖 TutorMate:** {answer}")
 
 # Show chat history
 st.subheader("📝 Conversation History")
