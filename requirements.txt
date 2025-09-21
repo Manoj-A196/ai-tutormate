@@ -8,3 +8,4 @@ reportlab
 streamlit-authenticator
 pandas
 pyyaml
+sqlite3
