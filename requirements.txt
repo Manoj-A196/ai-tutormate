@@ -4,5 +4,4 @@ python-dotenv
 g4f
 playwright
 undetected-chromedriver
-streamlit-authenticator
 reportlab
