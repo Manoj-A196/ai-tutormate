@@ -103,22 +103,23 @@ def main():
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
 
-        user_input = st.text_input("Ask me anything about your studies:")
+        # Chat input (works like real chat)
+        user_input = st.chat_input("Ask me anything about your studies:")
 
-        if st.button("Send"):
-            if user_input.strip():
-                st.session_state.chat_history.append(("You", user_input))
-                # Dummy AI response (replace with Groq/OpenAI API later)
-                ai_response = f"📘 I think '{user_input}' is a great question. Here's a simplified explanation..."
-                st.session_state.chat_history.append(("AI", ai_response))
-                st.rerun()
+        if user_input:
+            st.session_state.chat_history.append(("You", user_input))
+            # Dummy AI response (replace later with Groq/OpenAI)
+            ai_response = f"📘 I think '{user_input}' is a great question. Here's a simplified explanation..."
+            st.session_state.chat_history.append(("AI", ai_response))
 
         # Display chat history
         for sender, msg in st.session_state.chat_history:
             if sender == "You":
-                st.markdown(f"**🧑 {sender}:** {msg}")
+                with st.chat_message("user"):
+                    st.markdown(msg)
             else:
-                st.markdown(f"**🤖 {sender}:** {msg}")
+                with st.chat_message("assistant"):
+                    st.markdown(msg)
 
 
 if __name__ == '__main__':
