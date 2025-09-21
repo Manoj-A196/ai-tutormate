@@ -3,3 +3,5 @@ pandas
 pyyaml
 python-dotenv
 groq
+streamlit-chat
+sqlite3-binary
