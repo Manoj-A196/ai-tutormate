@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit_authenticator as stauth
 import sqlite3
 import datetime
 from groq import Groq
@@ -6,13 +7,11 @@ from dotenv import load_dotenv
 import os
 
 # -----------------------------
-# Load API key
+# Load API Key
 # -----------------------------
 load_dotenv()
 api_key = os.getenv("GROQ_API_KEY") or "your_groq_api_key_here"
 client = Groq(api_key=api_key)
-
-st.set_page_config(page_title="📘 AI TutorMate", page_icon="📘", layout="wide")
 
 # -----------------------------
 # Database Setup
@@ -29,28 +28,26 @@ def init_db():
             timestamp TEXT
         )
     """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            password TEXT
-        )
-    """)
     conn.commit()
     conn.close()
 
 def save_message(username, role, content):
     conn = sqlite3.connect("chat_history.db")
     c = conn.cursor()
-    c.execute("INSERT INTO messages (username, role, content, timestamp) VALUES (?, ?, ?, ?)",
-              (username, role, content, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    c.execute(
+        "INSERT INTO messages (username, role, content, timestamp) VALUES (?, ?, ?, ?)",
+        (username, role, content, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    )
     conn.commit()
     conn.close()
 
 def load_history(username):
     conn = sqlite3.connect("chat_history.db")
     c = conn.cursor()
-    c.execute("SELECT id, role, content, timestamp FROM messages WHERE username=? ORDER BY id", (username,))
+    c.execute(
+        "SELECT id, role, content, timestamp FROM messages WHERE username=? ORDER BY id",
+        (username,)
+    )
     rows = c.fetchall()
     conn.close()
     return rows
@@ -69,86 +66,40 @@ def clear_all_history(username):
     conn.commit()
     conn.close()
 
-def register_user(username, password):
-    conn = sqlite3.connect("chat_history.db")
-    c = conn.cursor()
-    try:
-        c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
-        conn.commit()
-        return True
-    except sqlite3.IntegrityError:
-        return False
-    finally:
-        conn.close()
-
-def authenticate_user(username, password):
-    conn = sqlite3.connect("chat_history.db")
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
-    user = c.fetchone()
-    conn.close()
-    return user is not None
-
-# Initialize DB
 init_db()
 
 # -----------------------------
-# Sidebar Login/Register
+# Streamlit Config
 # -----------------------------
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.username = ""
-
-st.sidebar.title("🔑 User Login")
-
-if not st.session_state.logged_in:
-    choice = st.sidebar.radio("Choose Action", ["Login", "Register"])
-
-    if choice == "Login":
-        username = st.sidebar.text_input("Username")
-        password = st.sidebar.text_input("Password", type="password")
-        if st.sidebar.button("Login"):
-            if authenticate_user(username, password):
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                st.sidebar.success(f"✅ Welcome back, {username}!")
-                st.rerun()
-            else:
-                st.sidebar.error("❌ Invalid username or password")
-
-    elif choice == "Register":
-        new_username = st.sidebar.text_input("New Username")
-        new_password = st.sidebar.text_input("New Password", type="password")
-        if st.sidebar.button("Register"):
-            if register_user(new_username, new_password):
-                st.sidebar.success("✅ Registered successfully! Please login.")
-            else:
-                st.sidebar.error("⚠️ Username already exists.")
+st.set_page_config(page_title="AI TutorMate", page_icon="📘", layout="wide")
 
 # -----------------------------
-# Main Chat UI
+# Authentication
 # -----------------------------
-if st.session_state.logged_in:
-    st.sidebar.write(f"👤 Logged in as **{st.session_state.username}**")
-    if st.sidebar.button("🚪 Logout"):
-        st.session_state.logged_in = False
-        st.session_state.username = ""
-        st.rerun()
+names = ["Alice", "Bob"]
+usernames = ["alice", "bob"]
+passwords = ["123", "456"]  # demo passwords
+hashed_pw = stauth.Hasher(passwords).generate()
 
-    # Clear All History
-    st.sidebar.subheader("⚙️ Chat Settings")
-    if st.sidebar.button("🧹 Clear All History"):
-        clear_all_history(st.session_state.username)
-        st.success("✅ All history cleared!")
-        st.rerun()
+authenticator = stauth.Authenticate(
+    dict(zip(usernames, names)), usernames, hashed_pw,
+    "tutormate_cookie", "abcdef", cookie_expiry_days=30
+)
 
-    # Load history
-    history = load_history(st.session_state.username)
+name, auth_status, username = authenticator.login("Login", "sidebar")
 
-    st.title("📘 AI TutorMate - Study Helper")
+if auth_status is False:
+    st.error("❌ Invalid username or password")
+elif auth_status is None:
+    st.warning("⚠️ Please enter username and password")
+elif auth_status:
+    st.sidebar.success(f"✅ Logged in as {name}")
+    st.session_state.username = username
+
+    authenticator.logout("Logout", "sidebar")
 
     # -----------------------------
-    # Chat Bubble Styles
+    # CSS for Chat Bubbles
     # -----------------------------
     st.markdown("""
     <style>
@@ -184,10 +135,21 @@ if st.session_state.logged_in:
     """, unsafe_allow_html=True)
 
     # -----------------------------
-    # Display Conversation
+    # Sidebar Controls
     # -----------------------------
+    st.sidebar.subheader("⚙️ Chat Settings")
+    if st.sidebar.button("🧹 Clear All History"):
+        clear_all_history(username)
+        st.success("✅ All history cleared!")
+        st.rerun()
+
+    # -----------------------------
+    # Chat History Display
+    # -----------------------------
+    st.title("📘 AI TutorMate - Study Helper")
     st.subheader("📝 Conversation History")
 
+    history = load_history(username)
     chat_container = st.container()
 
     with chat_container:
@@ -210,6 +172,7 @@ if st.session_state.logged_in:
                     if st.button("🗑️", key=f"del_{msg_id}"):
                         delete_message(msg_id)
                         st.rerun()
+
             elif role == "assistant":
                 col1, col2 = st.columns([1,8])
                 with col1:
@@ -230,57 +193,17 @@ if st.session_state.logged_in:
                     )
 
     # -----------------------------
-    # Auto-scroll
-    # -----------------------------
-    st.markdown(
-        """
-        <script>
-        var chatContainer = window.parent.document.querySelector('.main');
-        if (chatContainer) {
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-        </script>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # -----------------------------
     # Chat Input
     # -----------------------------
     if "chat_input" not in st.session_state:
         st.session_state.chat_input = ""
 
-    user_input = st.text_area(
-        "✍️ Type your message...",
-        key="chat_input",
-        label_visibility="collapsed",
-        placeholder="Type your message and press Enter...",
-    )
-
-    send_btn = st.button("📤 Send", use_container_width=True)
-
-    # Enter-to-Send JS
-    st.markdown(
-        """
-        <script>
-        const textarea = window.parent.document.querySelector('textarea[data-testid="stTextArea-text_input"]');
-        if (textarea) {
-            textarea.addEventListener("keydown", function(event) {
-                if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    const sendButton = window.parent.document.querySelector('button[kind="secondaryFormSubmit"]');
-                    if (sendButton) { sendButton.click(); }
-                }
-            });
-        }
-        </script>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if send_btn and user_input.strip():
-        # Save user message
-        save_message(st.session_state.username, "user", user_input.strip())
+    def send_message():
+        user_msg = st.session_state.chat_input.strip()
+        if not user_msg:
+            return
+        
+        save_message(username, "user", user_msg)
 
         # Prepare context
         messages = [
@@ -288,12 +211,14 @@ if st.session_state.logged_in:
                 "role": "system",
                 "content": (
                     "You are AI TutorMate, a helpful teacher. "
-                    "You ONLY provide responses for educational purposes. "
-                    "If asked something unrelated to study, politely refuse."
+                    "You ONLY provide responses for educational purposes, "
+                    "such as math, science, coding, engineering, history, or literature. "
+                    "If asked something unrelated, politely refuse."
                 )
             }
         ]
-        for _, role, content, _ in history + [(0, "user", user_input.strip(), datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))]:
+        history = load_history(username)
+        for _, role, content, _ in history:
             messages.append({"role": role, "content": content})
 
         # Call Groq API
@@ -307,10 +232,36 @@ if st.session_state.logged_in:
         except Exception as e:
             answer = f"⚠️ API Error: {str(e)}"
 
-        # Save assistant reply
-        save_message(st.session_state.username, "assistant", answer)
+        save_message(username, "assistant", answer)
 
-        # Clear input
+        # ✅ Clear input
         st.session_state.chat_input = ""
-
         st.rerun()
+
+    # Input widget
+    chat_input = st.text_area(
+        "✍️ Type your message...",
+        key="chat_input",
+        label_visibility="collapsed",
+        placeholder="Type your message and press Enter...",
+        height=70
+    )
+
+    # Send button
+    st.button("📤 Send", use_container_width=True, on_click=send_message)
+
+    # Enter-to-send script
+    st.markdown("""
+    <script>
+    const textarea = window.parent.document.querySelector('textarea[data-testid="stTextArea"]');
+    if (textarea) {
+        textarea.addEventListener("keydown", function(e) {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                const sendButton = window.parent.document.querySelector('button[kind="secondaryFormSubmit"]');
+                if (sendButton) sendButton.click();
+            }
+        });
+    }
+    </script>
+    """, unsafe_allow_html=True)
