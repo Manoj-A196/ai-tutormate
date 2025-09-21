@@ -64,7 +64,8 @@ def save_message(username, role, message):
 def load_chat_history(username):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute("SELECT role, message FROM chats WHERE username=?", (username,))
+    # Get chats in chronological order
+    c.execute("SELECT role, message FROM chats WHERE username=? ORDER BY rowid ASC", (username,))
     history = c.fetchall()
     conn.close()
     return history
@@ -153,11 +154,15 @@ def main():
             with st.chat_message("user"):
                 st.markdown(user_input)
 
+            # Prepare chat history for AI
+            full_history = [{"role": role, "content": msg} for role, msg in history]
+            full_history.append({"role": "user", "content": user_input})
+
             # AI Response
             try:
                 response = client.chat.completions.create(
                     model="llama-3.1-8b-instant",
-                    messages=[{"role": "user", "content": user_input}],
+                    messages=full_history,
                 )
                 ai_response = response.choices[0].message.content
             except Exception as e:
