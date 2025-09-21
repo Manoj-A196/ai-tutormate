@@ -1,6 +1,18 @@
 import streamlit as st
 import sqlite3
 import hashlib
+import os
+from groq import Groq
+from dotenv import load_dotenv
+
+# -----------------------------
+# Load API key
+# -----------------------------
+load_dotenv()
+api_key = os.getenv("GROQ_API_KEY")
+if not api_key:
+    st.error("❌ API key not found. Please set GROQ_API_KEY in .env file.")
+client = Groq(api_key=api_key)
 
 # -----------------------------
 # Database functions
@@ -12,6 +24,13 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
             password TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS chats (
+            username TEXT,
+            role TEXT,
+            message TEXT
         )
     ''')
     conn.commit()
@@ -35,6 +54,20 @@ def login_user(username, password):
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
+def save_message(username, role, message):
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("INSERT INTO chats (username, role, message) VALUES (?, ?, ?)", (username, role, message))
+    conn.commit()
+    conn.close()
+
+def load_chat_history(username):
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT role, message FROM chats WHERE username=?", (username,))
+    history = c.fetchall()
+    conn.close()
+    return history
 
 # -----------------------------
 # Main App
@@ -45,7 +78,7 @@ def main():
 
     init_db()
 
-    # Session state to keep track of login
+    # Session state
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
     if "username" not in st.session_state:
@@ -100,26 +133,40 @@ def main():
         # -----------------------------
         st.subheader("💬 AI Tutor Chat")
 
-        if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []
+        # Load previous chat history
+        history = load_chat_history(st.session_state.username)
 
-        # Chat input (works like real chat)
-        user_input = st.chat_input("Ask me anything about your studies:")
-
-        if user_input:
-            st.session_state.chat_history.append(("You", user_input))
-            # Dummy AI response (replace later with Groq/OpenAI)
-            ai_response = f"📘 I think '{user_input}' is a great question. Here's a simplified explanation..."
-            st.session_state.chat_history.append(("AI", ai_response))
-
-        # Display chat history
-        for sender, msg in st.session_state.chat_history:
-            if sender == "You":
+        for role, msg in history:
+            if role == "user":
                 with st.chat_message("user"):
                     st.markdown(msg)
             else:
                 with st.chat_message("assistant"):
                     st.markdown(msg)
+
+        # Chat input
+        user_input = st.chat_input("Ask me anything about your studies:")
+
+        if user_input:
+            # Save user message
+            save_message(st.session_state.username, "user", user_input)
+            with st.chat_message("user"):
+                st.markdown(user_input)
+
+            # AI Response
+            try:
+                response = client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[{"role": "user", "content": user_input}],
+                )
+                ai_response = response.choices[0].message.content
+            except Exception as e:
+                ai_response = f"⚠️ Error: {e}"
+
+            # Save AI reply
+            save_message(st.session_state.username, "assistant", ai_response)
+            with st.chat_message("assistant"):
+                st.markdown(ai_response)
 
 
 if __name__ == '__main__':
