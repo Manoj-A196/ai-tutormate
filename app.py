@@ -1,139 +1,96 @@
 import streamlit as st
 import streamlit_authenticator as stauth
-import os
 from groq import Groq
+from dotenv import load_dotenv
+import os
 
-# -------------------------
-# User authentication setup
-# -------------------------
-names = ["Alice", "Bob"]
-usernames = ["alice", "bob"]
-passwords = ["abc123", "xyz123"]
+from chat_db import init_db, save_message, load_messages, clear_history
+
+# Initialize DB
+init_db()
+
+# Load secrets
+load_dotenv()
+API_KEY = os.getenv("GROQ_API_KEY")
+
+# Groq client
+client = Groq(api_key=API_KEY)
+
+# Dummy users (can move to config.yaml later)
+users = {
+    "alice": {"name": "Alice", "password": "abc123"},
+    "bob": {"name": "Bob", "password": "xyz123"},
+}
 
 # Hash passwords
-hashed_pw = stauth.Hasher(passwords).generate()
+hashed_passwords = stauth.Hasher([u["password"] for u in users.values()]).generate()
 
+# Auth config
 credentials = {
     "usernames": {
-        usernames[i]: {"name": names[i], "password": hashed_pw[i]}
-        for i in range(len(usernames))
+        username: {"name": u["name"], "password": pw}
+        for username, u, pw in zip(users.keys(), users.values(), hashed_passwords)
     }
 }
 
+# Authenticator
 authenticator = stauth.Authenticate(
     credentials,
     "ai_tutormate_cookie",
-    "abcdef",
-    cookie_expiry_days=30,
+    "abcdef123456",
+    cookie_expiry_days=1
 )
 
-name, authentication_status, username = authenticator.login("Login", "main")
+# Login
+name, auth_status, username = authenticator.login("Login", "sidebar")
 
-# -------------------------
-# UI if login successful
-# -------------------------
-if authentication_status:
-    authenticator.logout("Logout", "sidebar")
-    st.sidebar.title(f"Welcome {name} 👋")
+if auth_status:
+    st.title("📘 AI TutorMate - Study Helper")
 
-    # Initialize session state
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
-    if "selected_chat" not in st.session_state:
-        st.session_state.selected_chat = None
-    if "chat_input" not in st.session_state:
-        st.session_state.chat_input = ""
+    # Sidebar
+    st.sidebar.subheader(f"👋 Welcome, {name}")
+    if st.sidebar.button("🗑️ Clear Chat History"):
+        clear_history(username)
+        st.sidebar.success("History cleared!")
 
-    # Sidebar chat history management
-    st.sidebar.subheader("💬 Conversation History")
+    # Load conversation
+    if "messages" not in st.session_state:
+        st.session_state["messages"] = load_messages(username)
 
-    # Show saved chats
-    if st.session_state.chat_history:
-        chat_titles = [f"Chat {i+1}" for i in range(len(st.session_state.chat_history))]
-        selected = st.sidebar.radio("Select a chat:", chat_titles, index=0)
-
-        st.session_state.selected_chat = chat_titles.index(selected)
-
-        # Delete selected chat
-        if st.sidebar.button("🗑️ Delete Selected Chat"):
-            del st.session_state.chat_history[st.session_state.selected_chat]
-            st.session_state.selected_chat = None
-            st.rerun()
-
-    else:
-        st.sidebar.write("No conversations yet.")
-
-    # -------------------------
-    # Chat Interface
-    # -------------------------
-    st.title("🤖 AI Tutormate")
-
-    # Input field
-    with st.form("chat_form", clear_on_submit=True):
-        user_input = st.text_input("Type your message:", key="chat_input_field")
-        submitted = st.form_submit_button("Send")
-
-    if submitted and user_input.strip():
-        # Add new conversation if none selected
-        if st.session_state.selected_chat is None:
-            st.session_state.chat_history.append([])
-            st.session_state.selected_chat = len(st.session_state.chat_history) - 1
-
-        # Save user message
-        st.session_state.chat_history[st.session_state.selected_chat].append(
-            {"role": "user", "content": user_input}
-        )
-
-        # Prepare messages for API
-        messages_for_api = [
-            {"role": msg["role"], "content": msg["content"]}
-            for msg in st.session_state.chat_history[st.session_state.selected_chat]
-        ]
-
-        # Connect to Groq API
-        api_key = os.getenv("GROQ_API_KEY")
-        client = Groq(api_key=api_key) if api_key else None
-
-        if client:
-            try:
-                response = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=messages_for_api,
-                    temperature=0.7,
-                )
-                answer = response.choices[0].message.content
-            except Exception as e:
-                answer = f"⚠️ API Error: {e}"
+    # Chat UI
+    for msg in st.session_state["messages"]:
+        if msg["role"] == "user":
+            st.chat_message("user").write(msg["content"])
         else:
-            answer = "⚠️ No API key configured. Set GROQ_API_KEY to enable AI responses."
+            st.chat_message("assistant").write(msg["content"])
 
-        # Save bot reply
-        st.session_state.chat_history[st.session_state.selected_chat].append(
-            {"role": "assistant", "content": answer}
-        )
+    # Input
+    if user_input := st.chat_input("✍️ Ask your study question:"):
+        # Save & display user message
+        save_message(username, "user", user_input)
+        st.session_state["messages"].append({"role": "user", "content": user_input})
+        st.chat_message("user").write(user_input)
 
-        # Clear input
-        st.session_state.chat_input = ""
-        st.rerun()
+        # AI Response
+        try:
+            response = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=st.session_state["messages"],
+                temperature=0.7,
+            )
+            answer = response.choices[0].message.content
+        except Exception as e:
+            answer = f"⚠️ Error: {str(e)}"
 
-    # -------------------------
-    # Display current chat
-    # -------------------------
-    if (
-        st.session_state.selected_chat is not None
-        and st.session_state.selected_chat < len(st.session_state.chat_history)
-    ):
-        st.subheader("📜 Current Conversation")
-        for msg in st.session_state.chat_history[st.session_state.selected_chat]:
-            if msg["role"] == "user":
-                st.markdown(f"**🧑 You:** {msg['content']}")
-            else:
-                st.markdown(f"**🤖 AI:** {msg['content']}")
+        # Save & display assistant message
+        save_message(username, "assistant", answer)
+        st.session_state["messages"].append({"role": "assistant", "content": answer})
+        st.chat_message("assistant").write(answer)
 
-# -------------------------
-# Authentication handling
-# -------------------------
-elif authentication_status is False:
-    st.error("❌ Username/Password is incorrect")
-elif authentication_status is None:
-    st.warning("⚠️ Please enter your username and password")
+    # Logout
+    authenticator.logout("Logout", "sidebar")
+
+elif auth_status is False:
+    st.error("❌ Invalid username or password")
+elif auth_status is None:
+    st.warning("👆 Please login to continue")
