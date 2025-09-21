@@ -3,9 +3,16 @@ from groq import Groq
 from dotenv import load_dotenv
 import os
 
-# Load API key from .env
+# Load API key (first try Streamlit secrets, then .env for local use)
 load_dotenv()
-api_key = os.getenv("GROQ_API_KEY") or "your_groq_api_key_here"
+api_key = (
+    st.secrets.get("GROQ_API_KEY", None)
+    or os.getenv("GROQ_API_KEY")
+)
+
+if not api_key:
+    st.error("❌ No API key found. Please set GROQ_API_KEY in Streamlit secrets or .env file.")
+    st.stop()
 
 # Initialize Groq client
 client = Groq(api_key=api_key)
@@ -28,24 +35,28 @@ if "messages" not in st.session_state:
         }
     ]
 
-# Use chat input (auto-clears after sending)
+# Use chat input (auto clears after sending)
 user_input = st.chat_input("✍️ Ask your study question:")
 
 if user_input:
     st.session_state["messages"].append({"role": "user", "content": user_input})
 
-    # Call Groq API
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",  # free Groq model
-        messages=st.session_state["messages"],
-        temperature=0.7
-    )
+    try:
+        # Call Groq API
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",  # free Groq model
+            messages=st.session_state["messages"],
+            temperature=0.7
+        )
 
-    answer = response.choices[0].message.content
-    st.session_state["messages"].append({"role": "assistant", "content": answer})
+        answer = response.choices[0].message.content
+        st.session_state["messages"].append({"role": "assistant", "content": answer})
 
-    # Show reply
-    st.write(f"**🤖 TutorMate:** {answer}")
+        # Show reply
+        st.write(f"**🤖 TutorMate:** {answer}")
+
+    except Exception as e:
+        st.error(f"⚠️ API Error: {e}")
 
 # Show chat history
 st.subheader("📝 Conversation History")
