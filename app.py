@@ -35,23 +35,22 @@ if "messages" not in st.session_state:
         }
     ]
 
-# --- Show chat history first ---
-for msg in st.session_state["messages"]:
-    if msg["role"] == "user":
-        with st.chat_message("user"):
-            st.write(msg["content"])
-    elif msg["role"] == "assistant":
-        with st.chat_message("assistant"):
-            st.write(msg["content"])
+# --- Sidebar conversation history ---
+with st.sidebar:
+    st.subheader("📝 Conversation History")
+    for msg in st.session_state["messages"]:
+        if msg["role"] == "user":
+            st.markdown(f"**👤 You:** {msg['content']}")
+        elif msg["role"] == "assistant":
+            st.markdown(f"**🤖 TutorMate:** {msg['content']}")
 
-# --- Handle new input ---
+# --- Main chat UI ---
 user_input = st.chat_input("✍️ Ask your study question:")
 
 if user_input:
-    # Show user bubble immediately
+    # Show user message
     with st.chat_message("user"):
         st.write(user_input)
-
     st.session_state["messages"].append({"role": "user", "content": user_input})
 
     try:
@@ -61,14 +60,11 @@ if user_input:
             messages=st.session_state["messages"],
             temperature=0.7
         )
-
         answer = response.choices[0].message.content
     except Exception as e:
         answer = f"⚠️ API Error: {e}"
 
-    # Show assistant bubble immediately
+    # Show assistant reply
     with st.chat_message("assistant"):
         st.write(answer)
-
-    # Save to history
     st.session_state["messages"].append({"role": "assistant", "content": answer})
