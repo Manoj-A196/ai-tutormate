@@ -1,10 +1,5 @@
 streamlit
-groq
-python-dotenv
-g4f
-playwright
-undetected-chromedriver
-reportlab
-streamlit-authenticator
 pandas
 pyyaml
+python-dotenv
+groq
