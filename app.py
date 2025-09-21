@@ -20,10 +20,10 @@ except Exception:
 # -----------------------------
 load_dotenv()
 api_key = st.secrets.get("GROQ_API_KEY", None) or os.getenv("GROQ_API_KEY")
-if not api_key:
-    st.warning("No GROQ_API_KEY found — set it in Streamlit secrets or .env to enable the AI responses.")
-else:
+if api_key:
     client = Groq(api_key=api_key)
+else:
+    client = None
 
 st.set_page_config(page_title="AI TutorMate", page_icon="📘", layout="wide")
 
@@ -262,17 +262,15 @@ if st.session_state.logged_in:
     chat_html = '<div id="chat-box" class="chat-box">'
     for _id, role, content, ts in history:
         safe_content = html_escape(content)
-        # include delete link that sets ?delete=<id>
         delete_link = f'<a class="delete-link" href="?delete={_id}">🗑️ Delete</a>'
         if role == "user":
             chat_html += f'<div class="bubble-user">👤 {safe_content}<div class="meta">{ts} {delete_link}</div></div>'
         else:
             chat_html += f'<div class="bubble-assistant">🤖 {safe_content}<div class="meta">{ts} {delete_link}</div></div>'
     chat_html += '</div>'
-
     st.markdown(chat_html, unsafe_allow_html=True)
 
-    # Handle delete via query params (st.query_params)
+    # Handle delete via query params
     if "delete" in st.query_params:
         try:
             delete_id = int(st.query_params.get("delete", [None])[0])
@@ -280,11 +278,10 @@ if st.session_state.logged_in:
                 delete_message_by_id(delete_id, username)
         except Exception:
             pass
-        # clear query params and reload
         st.experimental_set_query_params()
         st.experimental_rerun()
 
-    # Auto-scroll to bottom JS (executes after chat_html)
+    # Auto-scroll
     st.markdown(
         """
         <script>
@@ -297,14 +294,12 @@ if st.session_state.logged_in:
 
     st.markdown("---")
 
-    # Use Streamlit's chat_input for reliable Enter=Send and Shift+Enter newline
-    user_input = st.chat_input("✍️ Type your question and press Enter to send (Shift+Enter = newline)")
+    # Use chat_input
+    user_input = st.chat_input("✍️ Type your question and press Enter (Shift+Enter for newline)")
 
     if user_input is not None and user_input.strip() != "":
-        # Save user's message
         save_message(username, "user", user_input.strip())
 
-        # Build messages for Groq (system + conversation)
         system_msg = {
             "role": "system",
             "content": (
@@ -313,15 +308,13 @@ if st.session_state.logged_in:
                 "engineering, history, or literature. If asked something unrelated to study, politely refuse."
             )
         }
-        # reload history to include the just-saved user message
+
         history = load_history(username)
         messages_for_api = [system_msg]
         for (_id, role, content, ts) in history:
-            # Groq expects 'user'/'assistant' roles — our DB already stores those
             messages_for_api.append({"role": role, "content": content})
 
-        # call Groq if key available
-        if api_key:
+        if client:
             try:
                 response = client.chat.completions.create(
                     model="llama-3.1-8b-instant",
@@ -330,3 +323,9 @@ if st.session_state.logged_in:
                 )
                 answer = response.choices[0].message.content
             except Exception as e:
+                answer = f"⚠️ API Error: {e}"
+        else:
+            answer = "⚠️ No API key configured. Set GROQ_API_KEY to enable AI responses."
+
+        save_message(username, "assistant", answer)
+        st.experimental_rerun()
