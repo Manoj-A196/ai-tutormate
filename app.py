@@ -1,105 +1,125 @@
 import streamlit as st
 import sqlite3
-from groq import Groq
-from dotenv import load_dotenv
-import os
+import hashlib
 
-# --- Load API key ---
-load_dotenv()
-api_key = os.getenv("GROQ_API_KEY")
-client = Groq(api_key=api_key)
+# -----------------------------
+# Database functions
+# -----------------------------
+def init_db():
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-# --- DB Setup ---
-conn = sqlite3.connect("users.db", check_same_thread=False)
-c = conn.cursor()
-c.execute('''CREATE TABLE IF NOT EXISTS users (
-                username TEXT PRIMARY KEY,
-                password TEXT)''')
-c.execute('''CREATE TABLE IF NOT EXISTS chat_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT,
-                role TEXT,
-                content TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-conn.commit()
+def add_user(username, password):
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+    conn.commit()
+    conn.close()
 
-# --- Session State ---
-if "username" not in st.session_state:
-    st.session_state.username = None
+def login_user(username, password):
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+    data = c.fetchone()
+    conn.close()
+    return data
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-# --- Login / Register Page ---
-if st.session_state.username is None:
-    choice = st.radio("Choose", ["Login", "Register"])
 
-    if choice == "Login":
-        st.subheader("Login")
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        if st.button("Login"):
-            c.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
-            if c.fetchone():
-                st.session_state.username = username
-                st.success("Login successful ✅")
-                st.experimental_rerun()
-            else:
-                st.error("Invalid credentials ❌")
+# -----------------------------
+# Main App
+# -----------------------------
+def main():
+    st.set_page_config(page_title="AI TutorMate", page_icon="🤖", layout="centered")
+    st.title("🤖 AI TutorMate")
+
+    init_db()
+
+    # Session state to keep track of login
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+    if "username" not in st.session_state:
+        st.session_state.username = ""
+
+    menu = ["Login", "Register"]
+    choice = st.sidebar.radio("Account", menu)
+
+    if not st.session_state.logged_in:
+        if choice == "Login":
+            st.subheader("Login Section")
+
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            if st.button("Login"):
+                hashed_pwd = hash_password(password)
+                result = login_user(username, hashed_pwd)
+                if result:
+                    st.session_state.logged_in = True
+                    st.session_state.username = username
+                    st.success(f"Welcome {username} 🎉")
+                    st.rerun()
+                else:
+                    st.error("Invalid Username or Password")
+
+        elif choice == "Register":
+            st.subheader("Create New Account")
+
+            new_user = st.text_input("Username")
+            new_password = st.text_input("Password", type="password")
+
+            if st.button("Register"):
+                if new_user and new_password:
+                    try:
+                        add_user(new_user, hash_password(new_password))
+                        st.success("Account created successfully!")
+                        st.info("Go to Login Menu to login")
+                    except:
+                        st.error("User already exists!")
+                else:
+                    st.warning("Please fill all fields")
 
     else:
-        st.subheader("Register")
-        new_user = st.text_input("New Username")
-        new_pass = st.text_input("New Password", type="password")
-        if st.button("Register"):
-            try:
-                c.execute("INSERT INTO users(username,password) VALUES(?,?)", (new_user, new_pass))
-                conn.commit()
-                st.success("Registered! Please login now.")
-            except:
-                st.error("User already exists ❌")
+        st.sidebar.success(f"Logged in as {st.session_state.username}")
+        if st.sidebar.button("Logout"):
+            st.session_state.logged_in = False
+            st.session_state.username = ""
+            st.rerun()
 
-# --- Chat Interface ---
-else:
-    st.title(f"💬 AI TutorMate - Welcome {st.session_state.username}!")
+        # -----------------------------
+        # Chat Section
+        # -----------------------------
+        st.subheader("💬 AI Tutor Chat")
 
-    # Load old history from DB (only once)
-    if not st.session_state.messages:
-        rows = c.execute("SELECT role, content FROM chat_history WHERE username=? ORDER BY id ASC",
-                         (st.session_state.username,)).fetchall()
-        for r in rows:
-            st.session_state.messages.append({"role": r[0], "content": r[1]})
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
 
-    # Display history
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+        user_input = st.text_input("Ask me anything about your studies:")
 
-    # Chat input
-    if prompt := st.chat_input("Type your question here..."):
-        # Show user message
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        if st.button("Send"):
+            if user_input.strip():
+                st.session_state.chat_history.append(("You", user_input))
+                # Dummy AI response (replace with Groq/OpenAI API later)
+                ai_response = f"📘 I think '{user_input}' is a great question. Here's a simplified explanation..."
+                st.session_state.chat_history.append(("AI", ai_response))
+                st.rerun()
 
-        # Save user msg in DB
-        c.execute("INSERT INTO chat_history(username, role, content) VALUES(?,?,?)",
-                  (st.session_state.username, "user", prompt))
-        conn.commit()
+        # Display chat history
+        for sender, msg in st.session_state.chat_history:
+            if sender == "You":
+                st.markdown(f"**🧑 {sender}:** {msg}")
+            else:
+                st.markdown(f"**🤖 {sender}:** {msg}")
 
-        # Get response from Groq
-        response = client.chat.completions.create(
-            model="mixtral-8x7b-32768",
-            messages=st.session_state.messages
-        )
-        answer = response.choices[0].message.content
 
-        # Show assistant message
-        with st.chat_message("assistant"):
-            st.markdown(answer)
-
-        # Save assistant msg in memory + DB
-        st.session_state.messages.append({"role": "assistant", "content": answer})
-        c.execute("INSERT INTO chat_history(username, role, content) VALUES(?,?,?)",
-                  (st.session_state.username, "assistant", answer))
-        conn.commit()
+if __name__ == '__main__':
+    main()
